@@ -1,4 +1,4 @@
-import { useEffect, useState, useContext } from "react";
+import React, { useEffect, useState, useContext, useLayoutEffect, useRef } from "react";
 import { getAddCommentUrl, getCommentListUrl } from "../../../api/urls";
 import { useNavigate } from "react-router-dom";
 import * as Actions from '../../../state/Actions';
@@ -6,8 +6,10 @@ import { apiAction } from "../../../api/api";
 import { getLoginDetails, getWorkspaceInfo } from "../../../config/cookiesInfo";
 import moment from "moment";
 import { formatDate } from "../../../utils/Utils";
-
-export default function RightSideBar(props) {
+import { Typography } from "@mui/material";
+import { FaCaretDown } from "react-icons/fa"; // Import the dropdown icon
+//
+export default function CommentsSideBar(props) {
     const { showModal, setShowModal, taskData } = props;
     const [msgData, setMsgData] = useState({ reply: "" })
     const [chatList, setChatData] = useState([])
@@ -16,9 +18,33 @@ export default function RightSideBar(props) {
     const { work_id } = getWorkspaceInfo();
     const { user_id } = getLoginDetails(useNavigate());
 
+    const [openOptionsIndex, setOpenOptionsIndex] = useState(null); // State to track open options in comment section
+
+    let MIN_TEXTAREA_HEIGHT = 50;
+    const textFieldRef = useRef(null)
+
+    useLayoutEffect(() => {
+        // Reset height - important to shrink on delete
+        textFieldRef.current.style.height = "50px";
+        //Set height
+        textFieldRef.current.style.height = `${Math.max(
+            textFieldRef.current.scrollHeight,
+            MIN_TEXTAREA_HEIGHT
+        )}px`;
+    }, [msgData.reply, MIN_TEXTAREA_HEIGHT]);
+
     useEffect(() => {
         getCommentList()
-    }, []);
+    }, [taskData]);
+
+    useLayoutEffect(() => {
+        scrollToBottom()
+    }, [chatList])
+
+    const scrollToBottom = () => {
+        var element = document.querySelector('#element');
+        element.scrollTop = element.scrollHeight;
+    }
 
     const getCommentList = async () => {
         let res = await apiAction({ url: getCommentListUrl(), method: 'post', data: { workspace_id: work_id, task_id: taskData.id }, navigate: navigate, dispatch: dispatch })
@@ -27,77 +53,282 @@ export default function RightSideBar(props) {
                 setChatData(res.result)
             }
         }
-
     }
+
+    // const sendComment = async () => {
+    //     let res = await apiAction({ url: getAddCommentUrl(), method: 'post', data: { workspace_id: work_id, task_id: taskData.id, comment: msgData.reply }, navigate: navigate, dispatch: dispatch })
+    //     if (res) {
+    //         if (res.success) {
+    //             setMsgData({ ...msgData, reply: "" })
+    //             getCommentList()
+    //         }
+    //     }
+    // }
+
     const sendComment = async () => {
-        let res = await apiAction({ url: getAddCommentUrl(), method: 'post', data: { workspace_id: work_id, task_id: taskData.id, comment: msgData.reply }, navigate: navigate, dispatch: dispatch })
-        if (res) {
-            if (res.success) {
-                setMsgData({ ...msgData, reply: "" })
-                getCommentList()
+        if (msgData.reply !== '') {
+            // Replace line breaks with <br> tags when sending the message
+            const messageWithLineBreaks = msgData.reply.replace(/\n/g, '<br>');
+
+            let res = await apiAction({
+                url: getAddCommentUrl(),
+                method: 'post',
+                data: { workspace_id: work_id, task_id: taskData.id, comment: messageWithLineBreaks },
+                navigate: navigate,
+                dispatch: dispatch
+            });
+
+            if (res && res.success) {
+                setMsgData({ ...msgData, reply: '' });
+                getCommentList();
             }
         }
-
     }
+
     const onSendMsgClick = () => {
         if (msgData.reply !== '') {
             sendComment()
         }
     }
+
     const ChatItem = (props) => {
-        const { chatData, index } = props
+        const { chatData, index, openOptionsIndex, setOpenOptionsIndex } = props;
+
+        const isDropdownOpen = openOptionsIndex === index;
+
+        const handleDropdownClick = (e) => {
+            e.stopPropagation();
+            setOpenOptionsIndex(isDropdownOpen ? null : index);
+        };
+
+        const handleEditClick = () => {
+            // Implement the edit functionality here
+        };
+
+        const handleDeleteClick = () => {
+            // Implement the delete functionality here
+        };
+
         return (
-            <div className=" mt-4">
-                {index == 0 ?
-                    <p className="text-sm text-gray-600 text-center">{moment(chatData.created_at).format("DD/MM/YYYY")}</p>
+            <div className="mt-4" onClick={() => setOpenOptionsIndex(null)}>
+
+                {index === 0 ?
+                    <p className="text-sm text-gray-600 text-center">
+                        {moment(chatData.created_at).format("DD/MM/YYYY")}
+                    </p>
                     : formatDate(chatData.created_at, "DD/MM/YYYY") !== formatDate(chatList[index - 1].created_at, "DD/MM/YYYY") ?
-                        <p className="text-sm text-gray-600 text-center">{moment(chatData.created_at).format("DD/MM/YYYY")}</p> : null
+                        <p className="text-sm text-gray-600 text-center">
+                            {moment(chatData.created_at).format("DD/MM/YYYY")}
+                        </p> : null
                 }
-                {user_id != chatData.comment_by_id ?
-                    <div className="flex flex-row">
-                        <div>
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="#949699"
-                                height="2em"
-                                width="2em"
-                            >
-                                <path d="M12 2C6.579 2 2 6.579 2 12s4.579 10 10 10 10-4.579 10-10S17.421 2 12 2zm0 5c1.727 0 3 1.272 3 3s-1.273 3-3 3c-1.726 0-3-1.272-3-3s1.274-3 3-3zm-5.106 9.772c.897-1.32 2.393-2.2 4.106-2.2h2c1.714 0 3.209.88 4.106 2.2C15.828 18.14 14.015 19 12 19s-3.828-.86-5.106-2.228z" />
-                            </svg>
+
+                {user_id !== chatData.comment_by_id ?
+                    <div className="flex flex-row relative">
+                        <div className="transition-all transform translate-y-8 opacity-0 group-hover:opacity-100 group-hover:translate-y-0 cursor-pointer" onClick={handleDropdownClick}>
+                            <FaCaretDown
+                                size={20}
+                                color="#949699"
+                                //fixing symbol at the top right corner
+                                // className="absolute top-0 right-0"
+                            />
                         </div>
 
                         <div class="bubble">
-                            <span className="text-sm px-2 font-medium text-gray-500">{chatData.comment_by_name}</span>
-                            <p className="px-2 text-sm">{chatData.comment}</p>
-                            <span className="flex justify-end text-xs text-gray-500 pr-3">{moment(chatData.created_at).format("HH:MM A")}</span>
+                            <span className="text-sm px-2 font-medium text-gray-500">
+                                {chatData.comment_by_name}
+                            </span>
+
+                            <pre className="px-2 text-sm overflow-hidden break-words">
+                                {chatData.comment.split('<br>').map((line, index) => (
+                                    <React.Fragment key={index}>
+                                        {line}
+                                        <br />
+                                    </React.Fragment>
+                                ))}
+                            </pre>
+
+                            <span className="flex justify-end text-xs text-gray-500 pr-3">
+                                {moment(chatData.created_at).format("HH:mm")}
+                            </span>
+
+                            {isDropdownOpen && (
+                                <div className="options-dropdown">
+                                    <ul>
+                                        <li onClick={handleEditClick}>Edit</li>
+                                        <li onClick={handleDeleteClick}>Delete</li>
+                                    </ul>
+                                </div>
+                            )}
+
                         </div>
                     </div>
                     :
                     <div className="flex flex-row justify-end">
+
                         <div class="bubble2">
-                            <p className="px-2 text-sm ">{chatData.comment}</p>
-                            <span className="flex justify-end text-xs text-gray-500 pr-2">{moment(chatData.created_at).format("HH:MM A")}</span>
+                            <div className="transition-all transform translate-y-8 opacity-0 hover:opacity-100 hover:translate-y-0 cursor-pointer" onClick={handleDropdownClick}>
+                                <FaCaretDown
+                                    size={20}
+                                    color="#949699"
+                                    // className="absolute top-0 right-0"
+                                />
+                            </div>
+                            <pre className="px-2 text-sm break-words">
+                                {chatData.comment.split('<br>').map((line, index) => (
+                                    <React.Fragment key={index}>
+                                        {line}
+                                        <br />
+                                    </React.Fragment>
+                                ))}
+                            </pre>
+                            <span className="flex justify-end text-xs text-gray-500 px-2">
+                                {moment(chatData.created_at).format("HH:mm")}
+                            </span>
+                            {isDropdownOpen && (
+                                <div className="options-dropdown mt-3">
+                                    <ul>
+                                        <li onClick={handleEditClick}>Edit</li>
+                                        <li onClick={handleDeleteClick}>Delete</li>
+                                    </ul>
+                                </div>
+                            )}
                         </div>
                     </div>
-
                 }
             </div>
-        )
-    }
+        );
+    };
+
+    // const ChatItem = (props) => {
+    //     const { chatData, index } = props;
+
+    //     const [showOptions, setShowOptions] = useState(false);
+
+    //     const handleEditClick = () => {
+    //         // Implement the edit functionality here 
+    //     };
+
+    //     const handleDeleteClick = () => {
+    //         // Implement the delete functionality here 
+    //     };
+
+    //     return (
+    //         <div className="mt-4" onClick={() => setOpenOptionsIndex(null)}>
+
+    //             {index === 0 ?
+    //                 <p className="text-sm text-gray-600 text-center">
+    //                     {moment(chatData.created_at).format("DD/MM/YYYY")}
+    //                 </p>
+    //                 : formatDate(chatData.created_at, "DD/MM/YYYY") !== formatDate(chatList[index - 1].created_at, "DD/MM/YYYY") ?
+    //                     <p className="text-sm text-gray-600 text-center">
+    //                         {moment(chatData.created_at).format("DD/MM/YYYY")}
+    //                     </p> : null
+    //             }
+
+    //             {user_id !== chatData.comment_by_id ?
+    //                 <div className="flex flex-row relative ">
+    //                     <div className="transition-all transform translate-y-8 opacity-0 group-hover:opacity-100 group-hover:translate-y-0 ">
+    //                         <FaCaretDown
+    //                             size={20}
+    //                             color="#949699"
+    //                         // onClick={() => setShowOptions(!showOptions)}
+    //                         />
+    //                     </div>
+
+    //                     <div class="bubble">
+    //                         <span className="text-sm px-2 font-medium text-gray-500">
+    //                             {chatData.comment_by_name}
+    //                         </span>
+
+    //                         <pre className="px-2 text-sm overflow-hidden break-words">
+    //                             {chatData.comment.split('<br>').map((line, index) => (
+    //                                 <React.Fragment key={index}>
+    //                                     {line}
+    //                                     <br />
+    //                                 </React.Fragment>
+    //                             ))}
+    //                         </pre>
+
+    //                         <span className="flex justify-end text-xs text-gray-500 pr-3">
+    //                             {moment(chatData.created_at).format("HH:mm")}
+    //                         </span>
+
+    //                         {isDropdownOpen && (
+    //                             <div className="options-dropdown">
+    //                                 <ul>
+    //                                     <li onClick={handleEditClick}>Edit</li>
+    //                                     <li onClick={handleDeleteClick}>Delete</li>
+    //                                 </ul>
+    //                             </div>
+    //                         )}
+
+    //                     </div>
+    //                 </div>
+    //                 :
+    //                 <div className="flex flex-row justify-end">
+
+    //                     <div class="bubble2">
+    //                         <div className="transition-all transform translate-y-8 opacity-0 hover:opacity-100 hover:translate-y-0">
+    //                             <FaCaretDown
+    //                                 size={20}
+    //                                 color="#949699"
+    //                                 onClick={() => setShowOptions(!showOptions)}
+    //                                 className="cursor-pointer"
+    //                             />
+
+    //                         </div>
+    //                         <pre className="px-2 text-sm  break-words">
+    //                             {chatData.comment.split('<br>').map((line, index) => (
+    //                                 <React.Fragment key={index}>
+    //                                     {line}
+    //                                     <br />
+    //                                 </React.Fragment>
+    //                             ))}
+    //                         </pre>
+    //                         <span className="flex justify-end text-xs text-gray-500 px-2">
+    //                             {moment(chatData.created_at).format("HH:mm")}
+    //                         </span>
+    //                         {showOptions && (
+    //                             <div className="options-dropdown mt-3">
+    //                                 <ul>
+    //                                     <li onClick={handleEditClick}>Edit</li>
+    //                                     <li onClick={handleDeleteClick}>Delete</li>
+    //                                 </ul>
+    //                             </div>
+    //                         )}
+    //                     </div>
+    //                 </div>
+    //             }
+    //         </div>
+    //     );
+    // };
+
     return (
-        <div className={`custom-modal-dialog ${showModal ?'show':''}`} role="document">
+        <div className={`custom-modal-dialog ${showModal ? 'show' : ''}`} role="document">
             <div className="">
                 <div className="flex flex-row justify-between">
                     <span className="text-xl">#Comments</span>
-                    <svg fill="none" viewBox="0 0 24 24" className="cursor-pointer" height="1.5em" width="1.5em" onClick={() => setShowModal(false)}>
+                    <svg fill="none" viewBox="0 0 24 24" className="cursor-pointer" height="1.5em" width="1.5em" onClick={() => {
+                        setShowModal(!showModal)
+                    }
+                    }
+                    >
                         <path
                             fill="currentColor"
                             d="M6.225 4.811a1 1 0 00-1.414 1.414L10.586 12 4.81 17.775a1 1 0 101.414 1.414L12 13.414l5.775 5.775a1 1 0 001.414-1.414L13.414 12l5.775-5.775a1 1 0 00-1.414-1.414L12 10.586 6.225 4.81z"
                         />
                     </svg>
                 </div>
-                <div className="no-scrollbar overflow-y-auto overflow-x-hidden pr-1" style={{ height: 'calc(100vh - 250px)', scrollbarWidth: 'none' }} >
-                    {chatList.map((item, index) => (<ChatItem chatData={item} index={index} />))}
+                <div id="element" className="no-scrollbar overflow-y-auto overflow-x-hidden pr-1 " style={{ height: 'calc(100vh - 250px)', scrollbarWidth: 'none' }} >
+                    {chatList.map((item, index) => (
+                        <ChatItem
+                            chatData={item}
+                            index={index}
+                            key={item.id}
+                            openOptionsIndex={openOptionsIndex}
+                            setOpenOptionsIndex={setOpenOptionsIndex}
+                        />
+                    ))}
                     {chatList.length == 0 &&
                         <p className="flex justify-center mt-[35vh]">
                             No data found
@@ -107,28 +338,65 @@ export default function RightSideBar(props) {
 
             </div>
 
-            <div className="absolute bottom-2 right-2 left-2 "  >
+            <div className="absolute bottom-2 right-2 left-2">
                 <div className="flex flex-row justify-between items-between w-full">
                     <div className="flex w-full">
-                        <input
-                            type={'text'}
-                            id={"replyInputBox"}
-                            disabled={false}
-                            name={''}
+                        <textarea
                             value={msgData.reply}
-                            className={'h-10 flex w-full rounded-lg border-transparent'}
-                            onChange={(e) => { setMsgData({ ...msgData, reply: e.target.value }) }}
-                            onBlur={() => { }}
-                            placeholder={''}
-                            autoComplete="new-password"
-                            style={{ WebkitAppearance: "none" }}
+                            id={"replyInputBox"}
+                            ref={textFieldRef}
+                            className={' text-justify w-full rounded-md border-transparent no-scrollbar break-all '}
+                            placeholder="Write your comment..."
+                            type="text"
+                            // multiple
+                            onChange={e => {
+                                // console.log("nativeEvent", e.nativeEvent);
+                                // Destructure and update msgData
+                                setMsgData({ ...msgData, reply: e.target.value });
+                                console.log("msgData ===>", msgData.reply);
+
+                                // Check for the condition
+                                // if (e.target.value.includes("/") && e.nativeEvent.inputType === "insertFromPaste") {
+                                //     console.log("IN IF");
+                                //     // setInputValue("");
+                                //     textFieldRef.current.value = null;
+                                //     // onType();
+                                // } else {
+                                //     console.log("IN ELSE");
+                                //     // setInputValue(e.target.value);
+                                //     // onType();
+                                // }
+                            }}
+
+                            // onChange={(e) => { setMsgData({ ...msgData, reply: e.target.value }) }}
+                            style={{
+                                maxHeight: 240,
+                                minHeight: MIN_TEXTAREA_HEIGHT,
+                                resize: "none",
+                                verticalAlign: 'center'
+                            }}
+
+                            // onKeyDown={(e) => {
+                            //     if (e.key === 'Enter' && e.target.value) {
+                            //         onSendMsgClick()                                    // 
+                            //         setTimeout(() => {
+                            //             textFieldRef.current.style.height = "32px";
+                            //             textFieldRef.current.value = "";
+                            //         }, 50)
+                            //     }
+                            // }}
+
                             onKeyDown={(e) => {
-                                if (e.key == "Enter") {
-                                    onSendMsgClick()
+                                if (e.key === 'Enter' && e.target.value) {
+                                    if (!e.shiftKey) {
+                                        e.preventDefault(); // Prevent default behavior (submit)
+                                        onSendMsgClick();
+                                        textFieldRef.current.style.height = "32px";
+                                        textFieldRef.current.value = "";
+                                    }
                                 }
                             }}
-                        >
-                        </input>
+                        ></textarea>
                     </div>
                     {msgData.reply !== "" &&
                         <div className="flex justify-center text-center items-center pl-2">
